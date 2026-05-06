@@ -126,6 +126,7 @@ func (provider *Provider) Register(httpServer *httpserver.Server) {
 		cors.POST("/common/panel/usage", controller.Panel{}.Usage)
 		cors.POST("/common/panel/backup", controller.Panel{}.Backup)
 		cors.POST("/common/panel/proxy", controller.Panel{}.Proxy)
+		cors.POST("/common/panel/update", controller.Panel{}.Update)
 		cors.POST("/common/panel/backup-list", controller.Panel{}.BackupList)
 		cors.POST("/common/panel/backup-delete", controller.Panel{}.BackupDelete)
 		cors.POST("/common/panel/backup-download", controller.Panel{}.BackupDownload)

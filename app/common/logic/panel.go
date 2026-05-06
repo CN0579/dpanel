@@ -1,7 +1,9 @@
 package logic
 
 import (
+	"bytes"
 	"fmt"
+	"html/template"
 	"path/filepath"
 
 	"github.com/donknap/dpanel/common/service/docker/types"
@@ -10,6 +12,33 @@ import (
 
 type Panel struct {
 }
+
+const panelUpdateCommandTemplate = `
+{{- if eq .type "container" -}}
+docker run --rm \
+-v /var/run/docker.sock:/var/run/docker.sock \
+{{ .installerImage }} \
+upgrade -y \
+--name {{ .name }}{{ if .version }} \
+--version {{ .version }}{{ end }}{{ if .edition }} \
+--edition {{ .edition }}{{ end }}{{ if .enableDev }} \
+--dev{{ end }}{{ if .dns }} \
+--dns {{ .dns }}{{ end }}{{ if .proxy }} \
+--proxy {{ .proxy }}{{ end }}{{ if .enableBackup }} \
+--backup{{ end }}
+{{- else -}}
+curl -sSL https://dpanel.cc/quick.sh | bash -s -- \
+upgrade -y \
+--name {{ .name }} \
+{{ if .version }} \
+--version {{ .version }}{{ end }}{{ if .edition }} \
+--edition {{ .edition }}{{ end }}{{ if .enableDev }} \
+--dev{{ end }}{{ if .dns }} \
+--dns {{ .dns }}{{ end }}{{ if .proxy }} \
+--proxy {{ .proxy }}{{ end }}{{ if .enableBackup }} \
+--backup{{ end }}
+{{- end }}
+`
 
 func (self Panel) GetPanelPath() []*types.ValueItem {
 	savePath := []*types.ValueItem{
@@ -46,4 +75,18 @@ func (self Panel) GetPanelPath() []*types.ValueItem {
 
 func (self Panel) SaveRootPath() string {
 	return filepath.Join(storage.Local{}.GetBackupPath(), "dpanel")
+}
+
+func (self Panel) MakeUpdateCommand(params map[string]any) (string, error) {
+	commandTemplate, err := template.New("panel-update-command").Parse(panelUpdateCommandTemplate)
+	if err != nil {
+		return "", err
+	}
+
+	commandBuffer := new(bytes.Buffer)
+	err = commandTemplate.Execute(commandBuffer, params)
+	if err != nil {
+		return "", err
+	}
+	return commandBuffer.String(), nil
 }

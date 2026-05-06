@@ -12,7 +12,15 @@ const (
 
 type DPanelInfo struct {
 	ContainerInfo container.InspectResponse `json:"containerInfo"`
+	Name          string                    `json:"name"`
 	RunIn         string                    `json:"runIn"`
+	Version       string                    `json:"version"`
+	Family        string                    `json:"family"`
+	Env           string                    `json:"env"`
+	Dns           string                    `json:"dns"`
+	IsDev         bool                      `json:"isDev"`
+	IsCe          bool                      `json:"isCe"`
+	IsLite        bool                      `json:"isLite"`
 	Proxy         string                    `json:"proxy"`
 	NoProxy       string                    `json:"noProxy"`
 	Mount         types.VolumeItem          `json:"mount"` // 通过容器创建时是挂载目录，二进制运行时是直接路径

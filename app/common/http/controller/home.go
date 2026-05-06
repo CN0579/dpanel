@@ -387,21 +387,18 @@ func (self Home) Info(http *gin.Context) {
 	dockerEnv.TlsCa = ""
 	dockerEnv.TlsKey = ""
 
-	DPanelVersion := facade.GetConfig().GetString("app.version")
-	if len(DPanelVersion) == 13 && DPanelVersion[8] == '.' {
-		if t, err := time.ParseInLocation(define.DateShowVersion, DPanelVersion, time.UTC); err == nil {
-			DPanelVersion = t.Local().Format(define.DateShowVersion)
-		}
-	}
-
 	self.JsonResponseWithoutError(http, gin.H{
 		"info":          info,
 		"clientVersion": docker.Sdk.Client.ClientVersion(),
 		"sdkVersion":    api.DefaultVersion,
 		"dpanel": map[string]interface{}{
-			"version":       facade.GetConfig().GetString("app.version"),
-			"family":        facade.GetConfig().GetString("app.family"),
-			"env":           facade.GetConfig().GetString("app.env"),
+			"version":       dpanelInfo.Version,
+			"family":        dpanelInfo.Family,
+			"env":           dpanelInfo.Env,
+			"dns":           dpanelInfo.Dns,
+			"isDev":         dpanelInfo.IsDev,
+			"isCe":          dpanelInfo.IsCe,
+			"isLite":        dpanelInfo.IsLite,
 			"containerInfo": containerInfo,
 			"runIn":         dpanelInfo.RunIn,
 			"proxy":         dpanelInfo.Proxy,

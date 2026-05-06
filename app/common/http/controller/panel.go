@@ -1,9 +1,11 @@
 package controller
 
 import (
+	"bufio"
 	"errors"
 	"fmt"
 	"io/fs"
+	"log/slog"
 	"net"
 	"net/url"
 	"os"
@@ -21,11 +23,13 @@ import (
 	"github.com/donknap/dpanel/common/service/docker"
 	"github.com/donknap/dpanel/common/service/docker/backup"
 	"github.com/donknap/dpanel/common/service/docker/types"
+	"github.com/donknap/dpanel/common/service/exec/local"
 	"github.com/donknap/dpanel/common/service/storage"
 	"github.com/donknap/dpanel/common/types/define"
 	"github.com/gin-gonic/gin"
 	"github.com/mholt/archives"
 	"github.com/shirou/gopsutil/v4/disk"
+	"github.com/we7coreteam/registry-go-sdk"
 	"github.com/we7coreteam/w7-rangine-go/v2/pkg/support/facade"
 	"github.com/we7coreteam/w7-rangine-go/v2/src/http/controller"
 )
@@ -262,6 +266,97 @@ func (self Panel) Proxy(http *gin.Context) {
 	}
 
 	self.JsonSuccessResponse(http)
+}
+
+func (self Panel) Update(http *gin.Context) {
+	type ParamsValidate struct {
+		Name           string `json:"name"`
+		Type           string `json:"type"`
+		InstallerImage string `json:"installerImage"`
+		Version        string `json:"version"`
+		Edition        string `json:"edition"`
+		EnableDev      bool   `json:"enableDev"`
+		Dns            string `json:"dns"`
+		Proxy          string `json:"proxy"`
+		EnableBackup   bool   `json:"enableBackup"`
+	}
+
+	params := ParamsValidate{}
+	if !self.Validate(http, &params) {
+		return
+	}
+
+	dpanelInfo := logic.Setting{}.GetDPanelInfo()
+	params.Name = dpanelInfo.Name
+	params.Type = "container"
+	if !function.IsRunInDocker() {
+		params.Type = "binary"
+	}
+	if params.Name == "" {
+		self.JsonResponseWithError(http, function.ErrorMessage(define.ErrorMessageCommonNotFoundDPanel), 500)
+		return
+	}
+
+	if params.Type == "container" {
+		params.InstallerImage = "dpanel/installer:latest"
+		for _, address := range []string{"registry.cn-hangzhou.aliyuncs.com", "docker.io"} {
+			reg := registry.New(
+				registry.WithAddress(address),
+			)
+			if err := reg.Client().Ping(); err != nil {
+				slog.Debug("panel upgrade select installer registry", "address", address, "error", err)
+				continue
+			}
+			params.InstallerImage = address + "/dpanel/installer:latest"
+			break
+		}
+
+	}
+
+	cmd, err := logic.Panel{}.MakeUpdateCommand(function.StructToMap(params))
+	if err != nil {
+		self.JsonResponseWithError(http, err, 500)
+		return
+	}
+
+	commandExecutor, err := local.New(
+		local.WithCommandName("/bin/sh"),
+		local.WithArgs("-c", cmd),
+		local.WithEnv(append(os.Environ(),
+			"SETTING_LOG_PATH="+filepath.Join(storage.Local{}.GetStorageLocalPath(), "logs", fmt.Sprintf("upgrade-%s.log", time.Now().Format(define.DateYmdHis))),
+		)),
+	)
+	if err != nil {
+		self.JsonResponseWithError(http, err, 500)
+		return
+	}
+
+	commandExecutor.WorkDir(storage.Local{}.GetStorageLocalPath())
+	commandOutput, err := commandExecutor.RunInPip()
+	if err != nil {
+		self.JsonResponseWithError(http, err, 500)
+		return
+	}
+	defer func() {
+		_ = commandOutput.Close()
+		slog.Debug("panel upgrade output closed", "name", params.Name, "type", params.Type)
+	}()
+	scanner := bufio.NewScanner(commandOutput)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "" {
+			continue
+		}
+		slog.Debug("panel upgrade output", "name", params.Name, "type", params.Type, "line", line)
+	}
+	if err := scanner.Err(); err != nil {
+		slog.Debug("panel upgrade output error", "name", params.Name, "type", params.Type, "error", err)
+		self.JsonResponseWithError(http, err, 500)
+		return
+	}
+
+	self.JsonSuccessResponse(http)
+	return
 }
 
 func (self Panel) BackupList(http *gin.Context) {

@@ -3,6 +3,9 @@ package logic
 import (
 	"fmt"
 	"os"
+	"path/filepath"
+	"strings"
+	"time"
 
 	"github.com/donknap/dpanel/common/accessor"
 	"github.com/donknap/dpanel/common/dao"
@@ -11,6 +14,7 @@ import (
 	"github.com/donknap/dpanel/common/service/docker/types"
 	types2 "github.com/donknap/dpanel/common/types"
 	"github.com/donknap/dpanel/common/types/define"
+	"github.com/we7coreteam/w7-rangine-go/v2/pkg/support/facade"
 )
 
 // 全局配置
@@ -91,6 +95,34 @@ func (self Setting) GetValueById(id int32) (*entity.Setting, error) {
 func (self Setting) GetDPanelInfo() types2.DPanelInfo {
 	result := types2.DPanelInfo{}
 	self.GetByKey(SettingGroupSetting, SettingGroupSettingDPanelInfo, &result)
+	if result.Name == "" {
+		result.Name = strings.TrimSpace(facade.GetConfig().GetString("app.name"))
+	}
+	if result.Name == "" && !function.IsRunInDocker() {
+		if executablePath, err := os.Executable(); err == nil {
+			executableName := strings.TrimSpace(filepath.Base(executablePath))
+			if executableName != "" && executableName != "." && executableName != string(filepath.Separator) {
+				result.Name = executableName
+			}
+		}
+	}
+	rawVersion := result.Version
+	if rawVersion == "" {
+		rawVersion = os.Getenv("APP_VERSION")
+	}
+	if rawVersion == "" {
+		rawVersion = facade.GetConfig().GetString("app.version")
+	}
+	result.Version = rawVersion
+	if result.Family == "" {
+		result.Family = os.Getenv("APP_FAMILY")
+	}
+	if result.Env == "" {
+		result.Env = os.Getenv("APP_ENV")
+	}
+	if result.Dns == "" {
+		result.Dns = os.Getenv("DP_DNS")
+	}
 	if result.Proxy == "" {
 		if v := os.Getenv("HTTP_PROXY"); v != "" {
 			result.Proxy = v
@@ -101,6 +133,14 @@ func (self Setting) GetDPanelInfo() types2.DPanelInfo {
 	if result.NoProxy == "" {
 		result.NoProxy = os.Getenv("NO_PROXY")
 	}
+	if len(rawVersion) == len(define.DateShowVersion) && strings.Count(rawVersion, ".") == 1 {
+		if t, err := time.ParseInLocation(define.DateShowVersion, rawVersion, time.UTC); err == nil {
+			result.IsDev = true
+			result.Version = t.Local().Format(define.DateShowVersion)
+		}
+	}
+	result.IsCe = result.Family != "pe"
+	result.IsLite = result.Env == "lite"
 	return result
 }
 
